@@ -92,6 +92,7 @@ type config struct {
 	PluginsDir       string `toml:"pluginsdir"`
 	TemplateDirFile  string `toml:"templatedirfile"`
 	TemplateBodyFile string `toml:"templatebodyfile"`
+	DefaultExt	 string `toml:"defaultext"`
 }
 
 type entry struct {
@@ -209,6 +210,10 @@ func (cfg *config) load() error {
 		}
 		cfg.MemoTemplate = expandPath(cfg.MemoTemplate)
 
+		if cfg.DefaultExt == "" {
+			cfg.DefaultExt = "txt"
+		}
+
 		dir := os.Getenv("MEMODIR")
 		if dir != "" {
 			cfg.MemoDir = dir
@@ -235,6 +240,7 @@ func (cfg *config) load() error {
 	cfg.SelectCmd = "peco"
 	cfg.GrepCmd = "grep -nH ${PATTERN} ${FILES}"
 	cfg.AssetsDir = "."
+	cfg.DefaultExt = "txt"
 	dir = filepath.Join(confDir, "plugins")
 	os.MkdirAll(dir, 0700)
 	cfg.PluginsDir = filepath.ToSlash(dir)
@@ -264,16 +270,21 @@ func msg(err error) int {
 	}
 	return 0
 }
-
-func filterText(files []string) []string {
+// 修正：txtとmdの両方をフィルタリング
+func filterMemoFiles(files []string) []string {
 	var newfiles []string
 	for _, file := range files {
-		if strings.HasSuffix(file, ".txt") {
+		if strings.HasSuffix(file, ".txt") || strings.HasSuffix(file, ".md") {
 			newfiles = append(newfiles, file)
 		}
 	}
 	sort.Sort(sort.Reverse(sort.StringSlice(newfiles)))
 	return newfiles
+}
+
+// 下位互換のために残す
+func filterText(files []string) []string {
+	return filterMemoFiles(files)
 }
 
 func filterMarkdown(files []string) []string {
@@ -347,7 +358,7 @@ func cmdList(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	files = filterText(files)
+	files = filterMemoFiles(files)
 	istty := isatty.IsTerminal(os.Stdout.Fd())
 	col := cfg.Column
 	if col == 0 {
@@ -486,10 +497,23 @@ func cmdNew(c *cli.Context) error {
 
 	var title string
 	var file string
+	var ext string
+
+	// 拡張子の決定
+	if extFlag := c.String("ext"); extFlag != "" {
+		if extFlag == "txt" || extFlag == "md" {
+			ext = extFlag
+		} else {
+			return fmt.Errorf("invalid extension: %s (use txt or md)", extFlag)
+		}
+	} else {
+		ext = cfg.DefaultExt
+	}
+
 	now := time.Now()
 	if c.Args().Present() {
 		title = c.Args().First()
-		file = now.Format("2006-01-02-") + escape(title) + ".txt"
+		file = now.Format("2006-01-02-") + escape(title) + "." + ext
 	} else {
 		fmt.Print("Title: ")
 		scanner := bufio.NewScanner(os.Stdin)
@@ -502,10 +526,10 @@ func cmdNew(c *cli.Context) error {
 		title = scanner.Text()
 		if title == "" {
 			title = now.Format("2006-01-02")
-			file = title + ".txt"
+			file = title + "." + ext
 
 		} else {
-			file = now.Format("2006-01-02-") + escape(title) + ".txt"
+			file = now.Format("2006-01-02-") + escape(title) + "." + ext
 		}
 	}
 	file = filepath.Join(cfg.MemoDir, file)
@@ -568,7 +592,7 @@ func (cfg *config) filterFiles() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	files = filterText(files)
+	files = filterMemoFiles(files)
 	var buf bytes.Buffer
 	err = cfg.runfilter(cfg.SelectCmd, strings.NewReader(strings.Join(files, "\n")), &buf)
 	if err != nil {
@@ -671,7 +695,7 @@ func cmdDelete(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	files = filterText(files)
+	files = filterMemoFiles(files)
 	pat := c.Args().First()
 	var args []string
 	for _, file := range files {
@@ -725,7 +749,7 @@ func cmdGrep(c *cli.Context) error {
 		if err != nil || len(files) == 0 {
 			return err
 		}
-		files = filterText(files)
+		files = filterMemoFiles(files)
 		for _, file := range files {
 			args = append(args, filepath.Join(cfg.MemoDir, file))
 		}
@@ -802,7 +826,7 @@ func cmdServe(c *cli.Context) error {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			files = filterText(files)
+			files = filterMemoFiles(files)
 			var entries []entry
 			for _, file := range files {
 				entries = append(entries, entry{
