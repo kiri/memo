@@ -265,6 +265,17 @@ func msg(err error) int {
 	return 0
 }
 
+func filterText(files []string) []string {
+	var newfiles []string
+	for _, file := range files {
+		if strings.HasSuffix(file, ".txt") {
+			newfiles = append(newfiles, file)
+		}
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(newfiles)))
+	return newfiles
+}
+
 func filterMarkdown(files []string) []string {
 	var newfiles []string
 	for _, file := range files {
@@ -336,7 +347,7 @@ func cmdList(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	files = filterMarkdown(files)
+	files = filterText(files)
 	istty := isatty.IsTerminal(os.Stdout.Fd())
 	col := cfg.Column
 	if col == 0 {
@@ -478,7 +489,7 @@ func cmdNew(c *cli.Context) error {
 	now := time.Now()
 	if c.Args().Present() {
 		title = c.Args().First()
-		file = now.Format("2006-01-02-") + escape(title) + ".md"
+		file = now.Format("2006-01-02-") + escape(title) + ".txt"
 	} else {
 		fmt.Print("Title: ")
 		scanner := bufio.NewScanner(os.Stdin)
@@ -491,10 +502,10 @@ func cmdNew(c *cli.Context) error {
 		title = scanner.Text()
 		if title == "" {
 			title = now.Format("2006-01-02")
-			file = title + ".md"
+			file = title + ".txt"
 
 		} else {
-			file = now.Format("2006-01-02-") + escape(title) + ".md"
+			file = now.Format("2006-01-02-") + escape(title) + ".txt"
 		}
 	}
 	file = filepath.Join(cfg.MemoDir, file)
@@ -557,7 +568,7 @@ func (cfg *config) filterFiles() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	files = filterMarkdown(files)
+	files = filterText(files)
 	var buf bytes.Buffer
 	err = cfg.runfilter(cfg.SelectCmd, strings.NewReader(strings.Join(files, "\n")), &buf)
 	if err != nil {
@@ -660,7 +671,7 @@ func cmdDelete(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	files = filterMarkdown(files)
+	files = filterText(files)
 	pat := c.Args().First()
 	var args []string
 	for _, file := range files {
@@ -714,7 +725,7 @@ func cmdGrep(c *cli.Context) error {
 		if err != nil || len(files) == 0 {
 			return err
 		}
-		files = filterMarkdown(files)
+		files = filterText(files)
 		for _, file := range files {
 			args = append(args, filepath.Join(cfg.MemoDir, file))
 		}
@@ -791,7 +802,7 @@ func cmdServe(c *cli.Context) error {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			files = filterMarkdown(files)
+			files = filterText(files)
 			var entries []entry
 			for _, file := range files {
 				entries = append(entries, entry{
