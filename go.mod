@@ -1,4 +1,4 @@
-module github.com/mattn/memo
+module github.com/kiri/memo
 
 go 1.23
 
